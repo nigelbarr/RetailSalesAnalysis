@@ -1,0 +1,142 @@
+---
+title: "Retail Data Project"
+author: "Nigel Barreras"
+date: "2025-06-11"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+1.What are the top 3 product categories by total sales?
+
+2.Which store location had the highest average transaction amount?
+
+3.What is the distribution of payment methods used by customers?
+
+4.Are there any outliers in transaction amounts? If so, how would you handle them?
+
+
+Server Setup
+```{r server, include=TRUE}
+library(DBI)
+library(RSQLite)
+
+# Create a file based SQLite database
+con <- dbConnect(RSQLite::SQLite(), "retail_data.sqlite")
+
+#read retail sales data into Rstudio enviroment
+retail_data <- read.csv("retail_sales_data.csv")
+
+# Write to SQL database
+dbWriteTable(con, "retail_sales", retail_data, overwrite = TRUE)
+```
+
+CREATE TABLE category_total_sales AS 
+SELECT ProductCategory, 
+       SUM(TotalAmount) AS total_sales
+FROM retail_sales
+GROUP BY  ProductCategory
+ORDER BY total_sales DESC LIMIT 3;
+
+```{r Q1, include=TRUE}
+library(DBI)
+library(RSQLite)
+library(ggplot2)
+
+#Read the created sql table into the Rstudio enviroment
+category_sales <- dbReadTable(con, "category_total_sales")
+
+ggplot(data = category_sales, aes(x = reorder(ProductCategory, -total_sales),
+                                  y = total_sales)) +
+  geom_segment(aes(xend = ProductCategory, yend = 0), color = "gray") +
+  geom_point(size = 5, color = "steelblue") +
+  ylim(0,13500) +
+  scale_y_continuous(breaks = seq(0, max(category_sales$total_sales),
+                                  by = 2000)) +
+  labs(title = "Top 3 Product Categories by Sales", x = "Product Category",
+       y = "Total Sales ($)") +
+  theme_minimal()
+
+```
+
+CREATE TABLE store_transactions AS
+SELECT 
+    StoreLocation,
+    ROUND(AVG(TotalAmount), 2) AS avg_transaction
+FROM retail_sales
+GROUP BY StoreLocation
+ORDER BY avg_transaction DESC;
+
+```{r Q2, include=TRUE}
+
+store_avg_transactions <- dbReadTable(con, "store_transactions")
+
+ggplot(data = store_avg_transactions, 
+  aes(x = reorder(StoreLocation, -avg_transaction), y = avg_transaction)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  ylim(0,350) +
+  scale_y_continuous(breaks = seq(0,     
+                                  max(store_avg_transactions$avg_transaction),
+                                  by = 50)) +
+  labs(title = "Average Transaction amount by Store Location", x = "Location",
+       y = "Transaction Amount ($)") +
+  theme_minimal()
+
+```
+
+CREATE TABLE payment_method_dist AS
+SELECT
+    StoreLocation,
+    PaymentMethod,
+    COUNT(*) AS total_customers
+FROM retail_sales
+GROUP BY StoreLocation, PaymentMethod; 
+
+
+```{r Q3, include=TRUE}
+
+payment_method_dist <- dbReadTable(con, "payment_method_dist")
+
+ggplot(data = payment_method_dist, 
+  aes(x = PaymentMethod, y = StoreLocation, fill = total_customers)) +
+  geom_tile(color = "grey") +
+   scale_fill_gradient(low = "#CCCCCC", high = "#333333", 
+                       breaks = c(6, 11, 16)) +
+  labs(title = "Distribution of Payment Methods Used by Customers", 
+       x = "Payment Method",
+       y = "Store Location",
+       fill = "Customers") +
+  theme_minimal()
+
+```
+
+CREATE TABLE each_category_sale AS
+SELECT ProductCategory,
+       TotalAmount  
+FROM retail_sales
+WHERE TotalAmount IS NOT NULL
+ORDER BY TotalAmount DESC;
+
+```{r Q4, include=TRUE}
+
+each_category_sale <- dbReadTable(con, "each_category_sale")
+
+ggplot(data = each_category_sale, 
+  aes(x = ProductCategory, y = TotalAmount, fill = ProductCategory)) +
+  geom_boxplot(outliers = TRUE, outlier.shape = 19, outlier.colour = "red",
+               show.legend = FALSE) +
+  scale_y_continuous(breaks = seq(0,     
+                                  max(each_category_sale$TotalAmount),
+                                  by = 50)) +
+  labs(title = "Distribution of Sales per Product Category", 
+       x = "",
+       y = "Total Sale ($)",
+       fill = "Product Category",
+       xlabel = "") +
+  theme_minimal()
+
+```
+
